@@ -38,8 +38,6 @@ const savePDFToDB = async (key: string, bytes: Uint8Array): Promise<void> => {
   }
 };
 
-
-
 const loadPDFFromDB = async (key: string): Promise<Uint8Array | null> => {
   if (typeof window !== "undefined") {
     const db = await openPDFDatabase();
@@ -65,37 +63,37 @@ const loadPDFFromDB = async (key: string): Promise<Uint8Array | null> => {
   }
 };
 
-
-
-const wrapText = (
+export const wrapText = (
   ctx: CanvasRenderingContext2D,
   text: string,
   x: number,
   y: number,
-  maxWidth: number,
-  lineHeight: number
+  maxWidth: number = 300,
+  lineHeight: number = 20
 ) => {
-  if (typeof window !== "undefined") {
-    const words = text.split(" ");
-    let line = "";
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + " ";
-      const metrics = ctx.measureText(testLine);
-      const testWidth = metrics.width;
-      if (testWidth > maxWidth && n > 0) {
-        ctx.fillText(line, x, y);
-        line = words[n] + " ";
-        y += lineHeight;
-      } else {
-        line = testLine;
-      }
-    }
-    ctx.fillText(line, x, y);
-  } else {
+  if (typeof window === "undefined") {
     throw new Error("Window is not defined");
   }
-};
 
+  const words = text.split(" ");
+  let line = "";
+
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + " ";
+    const metrics = ctx.measureText(testLine);
+    const testWidth = metrics.width;
+
+    if (testWidth > maxWidth && n > 0) {
+      ctx.fillText(line, x, y);
+      line = words[n] + " ";
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+
+  ctx.fillText(line, x, y);
+};
 export const renderPage = async (
   pageNum: number,
   pdfDoc: any,
@@ -104,35 +102,49 @@ export const renderPage = async (
   scale: number,
   setPageNum: (n: number) => void,
   wrapTextFn: typeof wrapText,
-  isRenderingRef: React.MutableRefObject<boolean>
+  isRenderingRef: React.MutableRefObject<boolean>,
+  fontValue: number = 16,
+  lineValue: number = 300
 ) => {
   if (isRenderingRef.current || !pdfDoc) return;
   isRenderingRef.current = true;
 
   const page = await pdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale });
-  const canvas = canvasRef.current!;
-  const ctx = canvas.getContext("2d")!;
+  const canvas = canvasRef.current;
+  const ctx = canvas?.getContext("2d");
+  if (!canvas || !ctx) {
+    isRenderingRef.current = false;
+    return;
+  }
+
   canvas.width = viewport.width;
   canvas.height = viewport.height;
 
   await page.render({ canvasContext: ctx, viewport }).promise;
-
-  ctx.font = "16px sans-serif";
-  ctx.fillStyle = "black";
-  ctx.textBaseline = "top";
+  const lineHeight = fontValue + 4;
 
   textItems
     .filter((t) => t.page === pageNum)
     .forEach((item) => {
       const absX = item.relativeX * canvas.width;
       const absY = item.relativeY * canvas.height;
-      wrapTextFn(ctx, item.text, absX, absY, 300, 20);
+
+      const font = item.fontSize ?? fontValue;
+      const line = item.lineWidth ?? lineValue;
+      const lineHeight = font + 4;
+
+      ctx.font = `${font}px sans-serif`;
+      ctx.fillStyle = "black";
+      ctx.textBaseline = "top";
+
+      wrapTextFn(ctx, item.text, absX, absY, line, lineHeight);
     });
 
   setPageNum(pageNum);
   isRenderingRef.current = false;
 };
+
 
 export const loadPDF = async (
   fileInput: HTMLInputElement,
@@ -158,9 +170,6 @@ export const loadPDF = async (
   reader.readAsArrayBuffer(file);
 };
 
-
-
-
 export const handleCanvasClick = (
   e: React.MouseEvent,
   key: string,
@@ -169,7 +178,9 @@ export const handleCanvasClick = (
   pageNum: number,
   textItems: any[],
   setTextItems: (items: any[]) => void,
-  renderPageFn: (updatedItems: any[]) => void
+  renderPageFn: (updatedItems: any[]) => void,
+  fontValue: number,
+  lineValue: number
 ) => {
   const canvas = canvasRef.current!;
   const rect = canvas.getBoundingClientRect();
@@ -182,7 +193,15 @@ export const handleCanvasClick = (
   const text = textRef.current?.value.trim();
   if (!text) return;
 
-  const newItem = { text, page: pageNum, relativeX, relativeY };
+  const newItem = {
+    text,
+    page: pageNum,
+    relativeX,
+    relativeY,
+    fontSize: fontValue,
+    lineWidth: lineValue,
+  };
+
   const newItems = [...textItems, newItem];
   setTextItems(newItems);
   localStorage.setItem(key, JSON.stringify(newItems));
@@ -259,8 +278,6 @@ export const savePdf = async (
   return { success: true, message: "Файл сохранен" };
 };
 
-
-
 export async function clearPDFCache(key: string) {
   try {
     const db = await openPDFDatabase();
@@ -274,15 +291,20 @@ export async function clearPDFCache(key: string) {
   }
 }
 
-
-
-
 export function downloadImage(canvas: HTMLCanvasElement, currentPage: number) {
   if (!canvas) return;
   const link = document.createElement("a");
   link.download = `page-${currentPage}.png`;
   link.href = canvas.toDataURL("image/png");
   link.click();
+}
+export function convertGitHubBlobToRaw(blobUrl: string) {
+  const match = blobUrl.match(
+    /^https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/
+  );
+  if (!match) return blobUrl;
+  const [, user, repo, branch, path] = match;
+  return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
 }
 
 export default {
@@ -296,4 +318,5 @@ export default {
   savePdf,
   clearPDFCache,
   downloadImage,
+  convertGitHubBlobToRaw,
 };

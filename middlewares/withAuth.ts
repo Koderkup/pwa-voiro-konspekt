@@ -14,7 +14,7 @@ export const withAuth: MiddlewareFactory = (next) => {
         return response; 
       }
     }
-if (pathname === "/study-page") {
+if (pathname === "/study-page" || pathname === "/workbook") {
   const response = await AuthUsersOnlyMiddleware(request);
   if (response) {
     return response;

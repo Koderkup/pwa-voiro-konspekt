@@ -346,3 +346,463 @@ cp node_modules/pdfjs-dist/build/pdf.worker.min.js public/pdf.worker.min.js
 // };
 
 // export default PdfEditor;
+
+
+
+// useEffect(() => {
+  //   const loadInitialData = async () => {
+  //     if (!uid || !fileRef.current) return;
+  //     const pdfBytes = await loadPDFFromDB(key);
+  //     if (!pdfBytes) return;
+
+  //     const doc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+  //     setPdfDoc(doc);
+  //     setPageCount(doc.numPages);
+
+  //     const savedText = localStorage.getItem(getKey("textItems"));
+  //     if (savedText) {
+  //       const parsed = JSON.parse(savedText);
+  //       setTextItems(parsed);
+  //     }
+
+  //     const savedPageNum = localStorage.getItem(getKey("lastPageNum"));
+  //     if (savedPageNum) {
+  //       setPageNum(parseInt(savedPageNum));
+  //     }
+  //   };
+
+  //   loadInitialData();
+  // }, []);
+
+
+
+
+  useEffect(() => {
+    if (
+      pdfDoc &&
+      canvasRef.current &&
+      !initialRenderDone.current &&
+      textItems.length >= 0
+    ) {
+      initialRenderDone.current = true;
+      renderPageWithParams(pageNum);
+    }
+  }, [pdfDoc, textItems]);
+
+  useEffect(() => {
+    if (pdfDoc && canvasRef.current && initialRenderDone.current) {
+      renderPageWithParams(pageNum);
+    }
+  }, [pageNum, scale]);
+
+  useEffect(() => {
+    if (pdfDoc && canvasRef.current) {
+      renderPageWithParams(pageNum);
+    }
+  }, [textItems]);
+
+
+
+const wrapText = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number
+) => {
+  if (typeof window !== "undefined") {
+    const words = text.split(" ");
+    let line = "";
+    for (let n = 0; n < words.length; n++) {
+      const testLine = line + words[n] + " ";
+      const metrics = ctx.measureText(testLine);
+      const testWidth = metrics.width;
+      if (testWidth > maxWidth && n > 0) {
+        ctx.fillText(line, x, y);
+        line = words[n] + " ";
+        y += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    ctx.fillText(line, x, y);
+  } else {
+    throw new Error("Window is not defined");
+  }
+};
+
+export const renderPage = async (
+  pageNum: number,
+  pdfDoc: any,
+  canvasRef: React.RefObject<HTMLCanvasElement>,
+  textItems: any[],
+  scale: number,
+  setPageNum: (n: number) => void,
+  wrapTextFn: typeof wrapText,
+  isRenderingRef: React.MutableRefObject<boolean>
+) => {
+  if (isRenderingRef.current || !pdfDoc) return;
+  isRenderingRef.current = true;
+
+  const page = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  const canvas = canvasRef.current!;
+  const ctx = canvas.getContext("2d")!;
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  ctx.font = "16px sans-serif";
+  ctx.fillStyle = "black";
+  ctx.textBaseline = "top";
+
+  textItems
+    .filter((t) => t.page === pageNum)
+    .forEach((item) => {
+      const absX = item.relativeX * canvas.width;
+      const absY = item.relativeY * canvas.height;
+      wrapTextFn(ctx, item.text, absX, absY, 300, 20);
+    });
+
+  setPageNum(pageNum);
+  isRenderingRef.current = false;
+};
+
+
+
+// import { TextItem } from "../types/types";
+// import { useEffect, useRef } from "react";
+
+// export function useCanvasDrag({
+//   canvasRef,
+//   textItems,
+//   pageNum,
+//   ctx,
+//   onUpdate,
+//   onRender,
+// }: {
+//   canvasRef: React.RefObject<HTMLCanvasElement>;
+//   textItems: TextItem[];
+//   pageNum: number;
+//   ctx: CanvasRenderingContext2D;
+//   onUpdate: (updatedItems: TextItem[]) => void;
+//   onRender: () => void; 
+// }) {
+//   const draggingItemRef = useRef<TextItem | null>(null);
+//   const offsetRef = useRef({ x: 0, y: 0 });
+//   const scheduledRef = useRef(false);
+//   const pendingItemsRef = useRef<TextItem[]>([]);
+
+//   useEffect(() => {
+//     const canvas = canvasRef.current;
+//     if (!canvas || !ctx) return;
+
+//     const getCoords = (clientX: number, clientY: number) => {
+//       const rect = canvas.getBoundingClientRect();
+//       return {
+//         x: ((clientX - rect.left) * canvas.width) / rect.width,
+//         y: ((clientY - rect.top) * canvas.height) / rect.height,
+//       };
+//     };
+
+//     const checkHit = (x: number, y: number) => {
+//       for (const item of textItems) {
+//         if (item.page !== pageNum) continue;
+//         const metrics = ctx.measureText(item.text);
+//         const w = metrics.width;
+//         const h = 20;
+//         const itemX = item.relativeX * canvas.width;
+//         const itemY = item.relativeY * canvas.height;
+
+//         if (x >= itemX && x <= itemX + w && y >= itemY && y <= itemY + h) {
+//           draggingItemRef.current = item;
+//           offsetRef.current = {
+//             x: x - itemX,
+//             y: y - itemY,
+//           };
+//           if (navigator.vibrate) navigator.vibrate(50);
+//           break;
+//         }
+//       }
+//     };
+
+//     const scheduleUpdate = () => {
+//       if (!scheduledRef.current) {
+//         scheduledRef.current = true;
+//         requestAnimationFrame(() => {
+//           onUpdate([...pendingItemsRef.current]);
+//           scheduledRef.current = false;
+//         });
+//       }
+//     };
+
+//     const handleStart = (x: number, y: number) => checkHit(x, y);
+
+//     const handleMove = (x: number, y: number) => {
+//       const item = draggingItemRef.current;
+//       if (!item) return;
+//       item.relativeX = (x - offsetRef.current.x) / canvas.width;
+//       item.relativeY = (y - offsetRef.current.y) / canvas.height;
+//       pendingItemsRef.current = [...textItems];
+//       scheduleUpdate();
+//     };
+
+//     const handleEnd = () => {
+//       draggingItemRef.current = null;
+//       onUpdate([...textItems]); // финальное обновление данных
+//       onRender(); // отрисовка страницы
+//     };
+
+//     // Touch and Mouse handlers
+//     const touchStart = (e: TouchEvent) => {
+//       const { x, y } = getCoords(e.touches[0].clientX, e.touches[0].clientY);
+//       handleStart(x, y);
+//     };
+
+//     const touchMove = (e: TouchEvent) => {
+//       if (!draggingItemRef.current) return;
+//       e.preventDefault();
+//       const { x, y } = getCoords(e.touches[0].clientX, e.touches[0].clientY);
+//       handleMove(x, y);
+//     };
+
+//     const mouseDown = (e: MouseEvent) => {
+//       const { x, y } = getCoords(e.clientX, e.clientY);
+//       handleStart(x, y);
+//     };
+
+//     const mouseMove = (e: MouseEvent) => {
+//       if (!draggingItemRef.current) return;
+//       const { x, y } = getCoords(e.clientX, e.clientY);
+//       handleMove(x, y);
+//     };
+
+//     const removeListeners = () => {
+//       canvas.removeEventListener("touchstart", touchStart);
+//       canvas.removeEventListener("touchmove", touchMove);
+//       canvas.removeEventListener("touchend", handleEnd);
+//       canvas.removeEventListener("mousedown", mouseDown);
+//       canvas.removeEventListener("mousemove", mouseMove);
+//       canvas.removeEventListener("mouseup", handleEnd);
+//     };
+
+//     canvas.addEventListener("touchstart", touchStart);
+//     canvas.addEventListener("touchmove", touchMove, { passive: false });
+//     canvas.addEventListener("touchend", handleEnd);
+//     canvas.addEventListener("mousedown", mouseDown);
+//     canvas.addEventListener("mousemove", mouseMove);
+//     canvas.addEventListener("mouseup", handleEnd);
+
+//     return removeListeners;
+//   }, [canvasRef, textItems, pageNum, ctx, onUpdate, onRender]);
+// }
+
+
+
+
+// export const handleCanvasClick = (
+//   e: React.MouseEvent,
+//   key: string,
+//   canvasRef: React.RefObject<HTMLCanvasElement>,
+//   textRef: React.RefObject<HTMLTextAreaElement>,
+//   pageNum: number,
+//   textItems: any[],
+//   setTextItems: (items: any[]) => void,
+//   renderPageFn: (updatedItems: any[]) => void
+// ) => {
+//   const canvas = canvasRef.current!;
+//   const rect = canvas.getBoundingClientRect();
+//   const canvasX = ((e.clientX - rect.left) * canvas.width) / rect.width;
+//   const canvasY = ((e.clientY - rect.top) * canvas.height) / rect.height;
+
+//   const relativeX = canvasX / canvas.width;
+//   const relativeY = canvasY / canvas.height;
+
+//   const text = textRef.current?.value.trim();
+//   if (!text) return;
+
+//   const newItem = { text, page: pageNum, relativeX, relativeY };
+//   const newItems = [...textItems, newItem];
+//   setTextItems(newItems);
+//   localStorage.setItem(key, JSON.stringify(newItems));
+
+//   renderPageFn(newItems);
+// };
+
+
+
+
+useEffect drag-n-drop
+
+ useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !pdfDoc) return;
+
+    let draggingItem: TextItem | null = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    const getCoords = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((clientX - rect.left) * canvas.width) / rect.width,
+        y: ((clientY - rect.top) * canvas.height) / rect.height,
+      };
+    };
+
+    const mouseDown = (e: MouseEvent) => {
+      const { x, y } = getCoords(e.clientX, e.clientY);
+      for (const item of textItems) {
+        if (item.page !== pageNum) continue;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+
+        const metrics = ctx.measureText(item.text);
+        const w = metrics.width;
+        const h = 20;
+
+        const itemX = item.relativeX * canvas.width;
+        const itemY = item.relativeY * canvas.height;
+
+        if (x >= itemX && x <= itemX + w && y >= itemY && y <= itemY + h) {
+          draggingItem = item;
+          dragOffsetX = x - itemX;
+          dragOffsetY = y - itemY;
+          if (navigator.vibrate) navigator.vibrate(50);
+          break;
+        }
+      }
+    };
+
+    const mouseMove = (e: MouseEvent) => {
+      if (!draggingItem) return;
+      const { x, y } = getCoords(e.clientX, e.clientY);
+      draggingItem.relativeX = (x - dragOffsetX) / canvas.width;
+      draggingItem.relativeY = (y - dragOffsetY) / canvas.height;
+      localStorage.setItem(textKey, JSON.stringify(textItems));
+    };
+
+    const mouseUp = () => {
+      if (draggingItem) {
+        draggingItem = null;
+        renderPageWithParams(pageNum);
+        setTextItems([...textItems]); // обновляем состояние
+      }
+    };
+
+    const touchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const { x, y } = getCoords(touch.clientX, touch.clientY);
+      for (const item of textItems) {
+        if (item.page !== pageNum) continue;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+
+        const metrics = ctx.measureText(item.text);
+        const w = metrics.width;
+        const h = 20;
+
+        const itemX = item.relativeX * canvas.width;
+        const itemY = item.relativeY * canvas.height;
+
+        if (x >= itemX && x <= itemX + w && y >= itemY && y <= itemY + h) {
+          draggingItem = item;
+          dragOffsetX = x - itemX;
+          dragOffsetY = y - itemY;
+          if (navigator.vibrate) navigator.vibrate(50);
+          break;
+        }
+      }
+    };
+
+    const touchMove = (e: TouchEvent) => {
+      if (!draggingItem) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const { x, y } = getCoords(touch.clientX, touch.clientY);
+      draggingItem.relativeX = (x - dragOffsetX) / canvas.width;
+      draggingItem.relativeY = (y - dragOffsetY) / canvas.height;
+      localStorage.setItem(textKey, JSON.stringify(textItems));
+    };
+
+    const touchEnd = () => {
+      if (draggingItem) {
+        draggingItem = null;
+        renderPageWithParams(pageNum);
+        setTextItems([...textItems]);
+      }
+    };
+
+    canvas.addEventListener("mousedown", mouseDown);
+    canvas.addEventListener("mousemove", mouseMove);
+    canvas.addEventListener("mouseup", mouseUp);
+    canvas.addEventListener("touchstart", touchStart);
+    canvas.addEventListener("touchmove", touchMove, { passive: false });
+    canvas.addEventListener("touchend", touchEnd);
+
+    return () => {
+      canvas.removeEventListener("mousedown", mouseDown);
+      canvas.removeEventListener("mousemove", mouseMove);
+      canvas.removeEventListener("mouseup", mouseUp);
+      canvas.removeEventListener("touchstart", touchStart);
+      canvas.removeEventListener("touchmove", touchMove);
+      canvas.removeEventListener("touchend", touchEnd);
+    };
+  }, [canvasRef, textItems, pageNum, renderPageWithParams, textKey]);
+
+
+
+
+  // const handleContextMenu = useCallback(
+  //   (e: MouseEvent) => {
+  //     e.preventDefault();
+  //     const canvas = canvasRef.current;
+  //     if (!canvas) return;
+
+  //     const rect = canvas.getBoundingClientRect();
+  //     const canvasX = Math.round(
+  //       ((e.clientX - rect.left) * canvas.width) / rect.width
+  //     );
+  //     const canvasY = Math.round(
+  //       ((e.clientY - rect.top) * canvas.height) / rect.height
+  //     );
+
+  //     setTextItems((prev) => {
+  //       const indexToRemove = prev.findIndex((item) => {
+  //         const absX = item.relativeX * canvas.width;
+  //         const absY = item.relativeY * canvas.height;
+  //         return (
+  //           Math.abs(absX - canvasX) < 10 &&
+  //           Math.abs(absY - canvasY) < 10 &&
+  //           item.page === pageNum
+  //         );
+  //       });
+
+  //       if (indexToRemove !== -1) {
+  //         const updated = [...prev];
+  //         console.log(`Удаляем текст: "${updated[indexToRemove].text}"`);
+  //         updated.splice(indexToRemove, 1);
+  //         localStorage.setItem(textKey, JSON.stringify(updated));
+  //         return updated;
+  //       } else {
+  //         console.log("Текст не найден для удаления.");
+  //         return prev;
+  //       }
+  //     });
+  //   },
+  //   [pageNum, textItems, textKey]
+  // );
+
+  // useEffect(() => {
+  //   const canvas = canvasRef.current;
+  //   if (!canvas) return;
+
+  //   canvas.addEventListener("contextmenu", handleContextMenu);
+  //   return () => {
+  //     canvas.removeEventListener("contextmenu", handleContextMenu);
+  //   };
+  // }, [handleContextMenu]);

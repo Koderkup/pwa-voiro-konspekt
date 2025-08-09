@@ -23,7 +23,7 @@ interface UserCardProps {
   onUserDeleted: (userId: string) => Promise<void>;
 }
 const UserCard: React.FC<UserCardProps> = ({ user, onUserDeleted }) => {
-  const { profilePicURL, email, accessibleNotes, fullName, username } = user;
+  const { profilePicURL, email, accessibleNotes, fullName, username, surname} = user;
   const [newNote, setNewNote] = useState<Workbook>({ title: "", url: "" });
   const [isInputVisible, setIsInputVisible] = useState(false);
   const showToast = useShowToast();
@@ -75,7 +75,7 @@ const UserCard: React.FC<UserCardProps> = ({ user, onUserDeleted }) => {
   };
 
   return (
-    <Card.Root width="320px" h={300}>
+    <Card.Root width="320px" h={300} overflowY={'scroll'}>
       <Card.Body>
         <HStack mb="6" gap="3">
           <Avatar.Root>
@@ -88,7 +88,9 @@ const UserCard: React.FC<UserCardProps> = ({ user, onUserDeleted }) => {
           </Avatar.Root>
           <Stack gap="0">
             <Text fontWeight="semibold" textStyle="sm">
-              {fullName || username}
+              {surname && surname.trim() !== ""
+                ? fullName + " " + surname
+                : username}
             </Text>
             <Text color="fg.muted" textStyle="sm">
               Регистрация: {createdAtDate}

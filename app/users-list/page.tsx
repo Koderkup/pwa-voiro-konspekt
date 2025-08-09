@@ -30,7 +30,7 @@ const Users = () => {
 
   const filterUsers = () => {
     let filtered = users;
-
+    // Фильтрация по полному имени
     if (surnameFilter) {
       filtered = filtered.filter(
         (user) =>
@@ -39,6 +39,23 @@ const Users = () => {
       );
     }
 
+    // Фильтрация по имени пользователя, если фамилия не найдена
+    if (filtered.length === 0 && surnameFilter) {
+      filtered = users.filter(
+        (user) =>
+          user.username &&
+          user.username.toLowerCase().includes(surnameFilter.toLowerCase())
+      );
+    }
+    // фильтрация по фамилии
+    if (filtered.length === 0 && surnameFilter) {
+      filtered = users.filter(
+        (user) =>
+          user.surname &&
+          user.surname.toLowerCase().includes(surnameFilter.toLowerCase())
+      );
+    }
+    
     if (dateFilter) {
       const selectedDate = new Date(dateFilter).getTime();
       filtered = filtered.filter((user) => {
