@@ -1595,3 +1595,7 @@ useEffect(() => {
       window.removeEventListener("touchcancel", touchEnd);
     };
   }, [canvasRef, textItems, pageNum, renderPageWithParams, textKey]);
+
+
+
+ "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37/ttf/DejaVuSans.ttf"

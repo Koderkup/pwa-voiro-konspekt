@@ -150,7 +150,7 @@ const PdfEditor = () => {
     );
   };
   const savePdfHandler = async () => {
-    const result = await savePdf(canvasRef, key, loadPDFFromDB, textItems);
+    const result = await savePdf(canvasRef, key, loadPDFFromDB, textItems, lineValue);
     if (result.success) {
       showToast("Success", result.message, "success");
     } else {
